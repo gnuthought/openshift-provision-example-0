@@ -1,0 +1,140 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    description: openshift-provision example-0
+  name: provision-example-0
+
+parameters:
+- name: PROJECT_NAME
+  value: provision-example-0
+- name: OPENSHIFT_PROVISION_NAMESPACE
+  value: openshift-provision
+
+objects:
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: ${PROJECT_NAME}
+    namespace: ${OPENSHIFT_PROVISION_NAMESPACE}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: openshift-provision-admin
+    namespace: ${PROJECT_NAME}
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: admin
+  subjects:
+  - kind: ServiceAccount
+    name: ${PROJECT_NAME}
+    namespace: ${OPENSHIFT_PROVISION_NAMESPACE}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: openshift-provision-resource-manager
+    namespace: ${PROJECT_NAME}
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: resource-manager
+  subjects:
+  - kind: ServiceAccount
+    name: ${PROJECT_NAME}
+    namespace: ${OPENSHIFT_PROVISION_NAMESPACE}
+
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${PROJECT_NAME}
+    namespace: ${OPENSHIFT_PROVISION_NAMESPACE}
+    labels:
+      openshift-provision.gnuthought.com/config: "true"
+  data:
+    check_mode: "true"
+    service_account: ${PROJECT_NAME}
+    vars: |
+      project_name: ${PROJECT_NAME}
+      openshift_provision:
+        projects:
+        - name: "{{ project_name }}"
+      
+          resources:
+          - apiVersion: v1
+            kind: ResourceQuota
+            metadata:
+              name: compute
+            spec:
+              hard:
+                requests.cpu: "4"
+                requests.memory: 8Gi
+                limits.memory: 8Gi
+      
+          - apiVersion: v1
+            kind: LimitRange
+            metadata:
+              name: compute
+            spec:
+              limits:
+              - type: Pod
+                max:
+                  cpu: "4"
+                  memory: "8Gi"
+                min:
+                  cpu: "100m"
+                  memory: "2Mi"
+              - type: Container
+                max:
+                  cpu: "4"
+                  memory: "8Gi"
+                min:
+                  cpu: "100m"
+                  memory: "2Mi"
+                default:
+                  cpu: "1"
+                  memory: "512Mi"
+                defaultRequest:
+                  cpu: "500m"
+                  memory: "512Mi"
+                maxLimitRequestRatio:
+                  cpu: "10"
+                  memory: "2"
+      
+          - apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: allow-same-namespace
+            spec:
+              podSelector: {}
+              ingress:
+              - from:
+                - podSelector: {}
+      
+          - apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: allow-global-namespaces
+            spec:
+              podSelector: {}
+              ingress:
+              - from:
+                - namespaceSelector:
+                    matchLabels:
+                      network-policy-global: "true"
+      
+          role_bindings:
+          - role: admin
+            users:
+            - alice
+            # Note: The openshift_provision_manager_namespace variable is
+            # automatically set by the openshift-provision runner.
+            - system:serviceaccount:{{ openshift_provision_manager_namespace }}:{{ project_name }}
+            remove_unlisted: true
+          - role: edit
+            groups:
+            - example-one-dev
+            remove_unlisted: true
