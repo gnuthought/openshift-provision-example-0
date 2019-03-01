@@ -6,6 +6,7 @@
   - openshift-provision
   vars:
     project_name: provision-example-0
+    openshift_provision_manager_namespace: openshift-provision
     openshift_provision:
       projects:
       - name: "{{ project_name }}"
